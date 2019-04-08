@@ -4,21 +4,24 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#define WITH_SIGNALS 1
-#define NUM_CHILD 5
+#define WITH_SIGNALS 1                          //set wheteher perform with signals or without
+#define NUM_CHILD 5                             //number of childs
 
-char interupt = 0;
+char interupt = 0;                              //interupt indicator set to 0
 
+#if WITH_SIGNALS == 1
+//my own interput log
 void myinterrupt(){
-   printf("Parent[%I]: Interupt", getpid());
-   interupt = 1;
+   printf("Parent[%i]: Interupt =====================================================\n", getpid());
+   interupt = 1;//set interupt indicator to 1
 }
 
+//my own handler for child termiation
 void myhandler()
 {
-    printf("child[%i]: has been terminated");
+    printf("child[%i]: has been terminated \n",getpid());
 }
-
+#endif // WITH_SIGNALS
 
 
 int main()
@@ -32,59 +35,67 @@ int main()
 
 #if WITH_SIGNALS == 0
 
+//for each NUM_CHILD perform a fork - create 5 childs
         for (i = 0; i < NUM_CHILD; i++) {
         if (( pid[i] = fork()) == 0) {
-            printf("Parent[%i] parent id \n", getppid());
-            printf("child[%i] succesfully created\n",getpid()); //Print message of creation of all child processes
+            printf("Parent[%i] succesfully created a child[%i] \n",getppid(),getpid()); //Print message of creation of all child processes
             sleep(10);
             printf("child[%i] Execution completed \n",getpid()); //Print message of creation of all child processes
-
             exit(0);
-        } else if (pid[i] == -1){
+        } else if (pid[i] == -1){ //chack for errors
             printf("child[%i] has been created incorrect \n",getpid());
-           // for(int j=i; j>0; j--) czemu wywala ???
               for(j=0; j<i; j++)
             {
-                kill(pid[j],SIGTERM);
+                kill(pid[j],SIGTERM);   //kill all childs
                 printf("child[%i] has been termianted \n",getpid());
             }
             return 1;
         }
         sleep(1);
     }
-
-
-
-
-
-    for (i=0; i<NUM_CHILD; ++i)
-    {
-        printf("Parent[%i] parent id \n", getpid());
-        pid[i] = wait(&status);
-        printf("chlid[%i] Succesfully waited for child number %i \n",pid[i]);
+    //wait untill all childs end its process
+      while ((wpid = wait(&status)) > 0){
+        printf("Parent[%i]: Child exit \n",getpid());
     }
 #endif // WITH_SIGNALS
 
 #if WITH_SIGNALS == 1
 
-    for(i =0; i < NSIG; i++)
+    //assign my own ignore ignals
+    struct sigaction sigIgnore;
+    sigIgnore.sa_handler = SIG_IGN;
+
+    for(i=0; i < NSIG; i++)
     {
-        sigignore(j);
+        sigaction(i, &sigIgnore, NULL); //ignore all signals
     }
 
-    signal(SIGCHLD,SIG_DFL); //restore default SIGCHLD handelr
-    signal (SIGINT,myinterrupt); // set my interraput
+    //Assign my own child restore
+    struct sigaction sigRestore;
+    sigRestore.sa_handler = SIG_DFL;
+    sigaction(SIGCHLD, &sigRestore, NULL);
 
+    //assign my own child interuption
+    struct sigaction sigInterrupt;
+    sigInterrupt.sa_handler = myinterrupt;
+    sigaction(SIGINT, &sigInterrupt, NULL);
+
+    //for each NUM_CHILD perform a fork - create 5 childs
     for (i = 0; i < NUM_CHILD; i++) {
         if (( pid[i] = fork()) == 0) {
-            printf("Parent[%i] parent id \n", getppid());
-            printf("child[%i] succesfully created\n",getpid()); //Print message of creation of all child processes
+            sigaction(SIGINT, &sigIgnore, NULL);    //ignore signal interupt
+            //assign my handler to sigterm in child
+            struct sigaction sigTerm;
+            sigTerm.sa_handler = myhandler;
+            sigaction(SIGTERM, &sigTerm, NULL);
+
+            printf("Parent[%i] succesfully created a child[%i] \n",getppid(),getpid()); //Print message of creation of all child processes
             sleep(10);
             printf("child[%i] Execution completed \n",getpid()); //Print message of creation of all child processes
             exit(0);
         } else if (pid[i] == -1){
+        //indicate if child has been created incorectly
             printf("child[%i] has been created incorrect \n",getpid());
-           // for(int j=i; j>0; j--) czemu wywala ???
               for(j=0; j<i; j++)
             {
                 kill(pid[j],SIGTERM);
@@ -92,18 +103,23 @@ int main()
             }
             return 1;
         }
-        sleep(1);
+    //check if interupt occured
         if (interupt)
         {
             interupt = 0;
             printf("parent[%i] Interrupt of process \n", getpid());
-            kill(-2,SIGTERM);
+            for(j=0; j<i; j++)
+            {
+                kill(pid[j], SIGTERM);
+            }
         }
+        sleep(1);
     }
 
 
     int count = 0;
 
+    //wait for all childs and count them
     while ((wpid = wait(&status)) > 0){
         printf("Parent[%i]: Child exit \n",getpid());
         count++;
@@ -112,21 +128,12 @@ int main()
     //restore all signals
     for (i=0; i<NSIG; i++)
     {
-        signal(i,SIG_DFL);
+        sigaction(i, &sigRestore,NULL); //restore signal one by one
     }
 
+    printf("parent[%i] Exited %i childs \n", getpid(),count);
 
 
-    printf("parent[%i] Exited %i childs \n", count);
-
-
-#endif // WITH_SIGNALS
-
-  //while((wpid = wait(&status)) > 0)
-  //  {
-  //      printf("Succesfully waited for child number %i \n",wpid);
-  //  }
-    // how to recieve info that there is no more processes to be syncronized with parent one
-
+#endif
     return 0;
 }
